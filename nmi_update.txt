@@ -1,0 +1,218 @@
+; unrolled version of the neslib flush_vram_update code.
+; non-sequential writes are the same
+; sequential writes are about 45% faster
+; allowing for a sequential write of 141 bytes per v-blank
+; vs. 97 with the original code (assuming no palette changes this frame)
+; ...(109 bytes vs 73 original with palette changes)
+; note - sequential writes of length 2,3,4, or 5 are 
+; slower with this new code
+
+
+;VRAM_BUF = $700
+;defined elsewhere
+
+
+;void __fastcall__ flush_vram_update(unsigned char *buf);
+
+_flush_vram_update:
+	;this no longer functions
+	sta <NAME_UPD_ADR+0
+	stx <NAME_UPD_ADR+1
+
+_flush_vram_update_nmi: ; major changes
+
+	ldy #0
+
+@updName:
+
+	lda VRAM_BUF, y
+	iny
+	cmp #$40				;is it a non-sequental write?
+	bcs @updateSeq
+	sta PPU_ADDR			;this is the non-sequential code
+	lda VRAM_BUF, y
+	iny
+	sta PPU_ADDR
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	jmp @updName
+
+@updateSeq: ;this is the sequential code
+
+	tax
+	lda <PPU_CTRL_VAR
+	cpx #$80				;is it a horizontal or vertical sequence?
+	bcc @updHorzSeq
+	cpx #$ff				;is it end of the update?
+	beq @updDone
+
+@updVertSeq:
+
+	ora #$04
+	bne @updNameSeq			;bra
+
+@updHorzSeq:
+
+	and #$fb
+
+@updNameSeq:
+
+	sta PPU_CTRL
+
+	txa
+	and #$3f
+	sta PPU_ADDR
+	lda VRAM_BUF, y
+	iny
+	sta PPU_ADDR
+	lda VRAM_BUF, y
+	iny
+	tax
+	bne @fasterUpdate ;length should be != 0
+	
+@updNameLoop:
+
+; fall through as a error handler for length of zero
+
+@updDone:
+	rts
+	
+@fasterUpdate:
+	cpx #$21 ;more than 32
+	bcs @Unroll
+
+;32 max
+	lda Times7reverse, x ;x can't be bigger than 32
+	clc
+	adc #<@Unroll
+	sta <RLE_LOW
+	lda #>@Unroll
+	adc #0
+	sta <RLE_HIGH
+	jmp (RLE_LOW)
+	
+@Unroll:	;7 bytes per
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA 
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA	;5
+	
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA 
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA	;10
+	
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA 
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA	;15
+	
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA 
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA	;20
+	
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA 
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA	;25
+	
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA 
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA	;30
+	
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA 
+	lda VRAM_BUF, y
+	iny
+	sta PPU_DATA	;32 max
+	
+	cpx #$21 ;more than 32
+	bcs @tooBig
+	
+	lda <PPU_CTRL_VAR
+	sta PPU_CTRL
+	jmp @updName
+	
+@tooBig:
+	txa
+	sec 
+	sbc #$20 ;32
+	tax
+	jmp @fasterUpdate
+	
+
+Times7reverse:
+.byte 224,217,210,203,196,189,182,175,168,161
+.byte 154,147,140,133,126,119,112,105,98,91
+.byte 84,77,70,63,56,49,42,35,28,21
+.byte 14,7,0
